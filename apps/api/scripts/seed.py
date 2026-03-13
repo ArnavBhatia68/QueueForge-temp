@@ -62,6 +62,7 @@ async def seed():
             result = json.dumps({"output": f"Success data {i}"}) if status == JobStatus.SUCCEEDED else None
 
             job = Job(
+                owner_id=user.id,
                 queue_name=queue_obj.name,
                 type=random.choice(job_types),
                 priority=priority,

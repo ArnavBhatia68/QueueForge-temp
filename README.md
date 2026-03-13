@@ -125,6 +125,7 @@ npm install
 npm run dev
 ```
 
+Visit `http://localhost:3000/register` to create an account (or seed local sample data for quick exploration).
 Visit `http://localhost:3000` and create a user with `POST /api/v1/auth/register` (or seed local sample data for quick exploration).
 
 ## Deployment (Track A: Vercel + Railway)
@@ -171,6 +172,7 @@ Import the repository into Vercel.
 JWT-authenticated REST API:
 - `GET /health` — Liveness probe for API process
 - `GET /health/deep` — Readiness probe that verifies PostgreSQL + Redis connectivity
+- `POST /api/v1/auth/register` — Create a new account
 - `POST /api/v1/auth/login` — Obtain access token
 - `GET /api/v1/jobs` — List jobs (optional `?status=` / `?queue_name=` filters)
 - `POST /api/v1/jobs` — Enqueue a new job
@@ -207,3 +209,28 @@ cd apps/api && PYTHONPATH=. alembic revision --autogenerate -m "your_change_desc
 - Add automated integration tests for your critical job types and API flows.
 - Frontend now uses system fonts to keep builds deterministic in restricted CI/network environments.
 
+
+## Deployed Links
+- **Live Web App:** `ADD_YOUR_VERCEL_URL_HERE`
+- **Live API Base:** `ADD_YOUR_API_URL_HERE/api/v1`
+- **Demo User Policy:** Keep demo credentials disabled by default; enable local hints only with `NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS=true`.
+
+
+## Testing
+```bash
+# Frontend
+cd apps/web && npm run lint && npm run build
+
+# API tests
+cd apps/api && pip install -r requirements-dev.txt && PYTHONPATH=. pytest
+
+# Worker tests
+cd apps/worker && pip install -r requirements-dev.txt && PYTHONPATH=. pytest
+```
+
+
+## Known Limitations
+- Worker concurrency is single-process by default; scale by running multiple worker instances.
+- Handlers include realistic examples but are not tied to a real external product domain yet.
+- Dashboard uses polling (not WebSockets) for near-real-time updates.
+- No distributed tracing stack is configured out of the box.

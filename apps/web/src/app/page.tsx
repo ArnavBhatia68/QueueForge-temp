@@ -26,6 +26,7 @@ export default function LandingPage() {
           <Link href="/login">
             <Button variant="ghost">Sign In</Button>
           </Link>
+          <Link href="/register">
           <Link href="/login">
             <Button>Get Started</Button>
           </Link>
