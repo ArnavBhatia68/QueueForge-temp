@@ -7,7 +7,7 @@ from typing import List
 from pydantic import BaseModel
 
 from core.database import get_db
-from models import Job, JobStatus, User
+from models import Job, JobStatus, User, Queue
 from schemas import AnalyticsOverview
 from api.deps import get_current_user
 
@@ -19,28 +19,22 @@ async def get_overview_analytics(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    total_result = await db.execute(select(func.count(Job.id)).where(Job.owner_id == current_user.id))
-    total_jobs = total_result.scalar() or 0
+    total_jobs = (await db.execute(select(func.count(Job.id)).where(Job.owner_id == current_user.id))).scalar() or 0
+    total_queues = (await db.execute(select(func.count(Queue.id)).where(Queue.owner_id == current_user.id))).scalar() or 0
 
-    running_result = await db.execute(
-        select(func.count(Job.id)).where(Job.owner_id == current_user.id, Job.status == JobStatus.RUNNING)
+    status_counts_result = await db.execute(
+        select(Job.status, func.count(Job.id)).where(Job.owner_id == current_user.id).group_by(Job.status)
     )
-    running_jobs = running_result.scalar() or 0
+    status_counts = {status: count for status, count in status_counts_result.all()}
 
-    failed_result = await db.execute(
-        select(func.count(Job.id)).where(Job.owner_id == current_user.id, Job.status == JobStatus.FAILED)
-    )
-    failed_jobs = failed_result.scalar() or 0
+    queued_jobs = status_counts.get(JobStatus.QUEUED, 0)
+    running_jobs = status_counts.get(JobStatus.RUNNING, 0)
+    succeeded_jobs = status_counts.get(JobStatus.SUCCEEDED, 0)
+    failed_jobs = status_counts.get(JobStatus.FAILED, 0)
+    retrying_jobs = status_counts.get(JobStatus.RETRYING, 0)
 
-    success_result = await db.execute(
-        select(func.count(Job.id)).where(Job.owner_id == current_user.id, Job.status == JobStatus.SUCCEEDED)
-    )
-    success_jobs = success_result.scalar() or 0
-
-    success_rate = 0.0
-    completed = success_jobs + failed_jobs
-    if completed > 0:
-        success_rate = (success_jobs / completed) * 100.0
+    completed = succeeded_jobs + failed_jobs
+    success_rate = ((succeeded_jobs / completed) * 100.0) if completed else 0.0
 
     stmt = select(Job.started_at, Job.completed_at).where(
         Job.owner_id == current_user.id,
@@ -57,9 +51,13 @@ async def get_overview_analytics(
         avg_processing_time_ms = total_ms / len(times)
 
     return AnalyticsOverview(
+        total_queues=total_queues,
         total_jobs=total_jobs,
+        queued_jobs=queued_jobs,
         running_jobs=running_jobs,
+        succeeded_jobs=succeeded_jobs,
         failed_jobs=failed_jobs,
+        retrying_jobs=retrying_jobs,
         success_rate=round(success_rate, 2),
         avg_processing_time_ms=round(avg_processing_time_ms, 2),
     )
@@ -106,6 +104,7 @@ async def get_daily_stats(
 
 class RecentJobItem(BaseModel):
     id: int
+    name: str
     type: str
     queue_name: str
     status: str

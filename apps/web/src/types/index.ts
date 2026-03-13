@@ -9,10 +9,21 @@ export interface Queue {
   id: number;
   name: string;
   description: string | null;
+  owner_id?: number | null;
+}
+
+export interface QueueStats extends Queue {
+  total_jobs: number;
+  queued_jobs: number;
+  running_jobs: number;
+  succeeded_jobs: number;
+  failed_jobs: number;
+  last_activity_at: string | null;
 }
 
 export interface Job {
   id: number;
+  name: string;
   queue_name: string;
   type: string;
   priority: number;
@@ -41,9 +52,13 @@ export interface JobDetail extends Job {
 }
 
 export interface AnalyticsOverview {
+  total_queues: number;
   total_jobs: number;
+  queued_jobs: number;
   running_jobs: number;
+  succeeded_jobs: number;
   failed_jobs: number;
+  retrying_jobs: number;
   success_rate: number;
   avg_processing_time_ms: number;
 }

@@ -28,6 +28,7 @@ class Queue(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True, nullable=False)
     description = Column(String, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
 
     jobs = relationship("Job", back_populates="queue")
 
@@ -35,6 +36,7 @@ class Queue(Base):
 class Job(Base):
     __tablename__ = "jobs"
     id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, default="Untitled job")
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     queue_name = Column(String, ForeignKey("queues.name"), nullable=False, index=True)
     type = Column(String, nullable=False, index=True)

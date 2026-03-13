@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, Layers, PlayCircle, LogOut } from 'lucide-react';
+import { Activity, Layers, PlayCircle, LogOut, PlusSquare } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/hooks/use-auth';
@@ -21,6 +21,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
     { name: 'Overview', href: '/dashboard', icon: Activity },
     { name: 'Jobs', href: '/dashboard/jobs', icon: PlayCircle },
     { name: 'Queues', href: '/dashboard/queues', icon: Layers },
+    { name: 'Submit Job', href: '/dashboard/jobs/new', icon: PlusSquare },
   ];
 
   return (
@@ -58,7 +59,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-between">
             <div className="flex flex-col overflow-hidden">
               <span className="text-sm font-medium truncate">{user?.email || 'user@example.com'}</span>
-              <span className="text-xs text-muted-foreground">Free Tier</span>
+              <span className="text-xs text-muted-foreground">Background operations</span>
             </div>
             <Button variant="ghost" size="icon" onClick={handleLogout} title="Log out">
               <LogOut className="h-4 w-4 text-muted-foreground" />
