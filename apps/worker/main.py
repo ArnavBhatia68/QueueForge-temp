@@ -73,7 +73,8 @@ class Worker:
 
             job.status = JobStatus.RUNNING
             job.attempts += 1
-            job.started_at = datetime.utcnow()
+            if not job.started_at:
+                job.started_at = datetime.utcnow()
             job.worker_id = self.worker_id
 
             await self.log_job(session, job.id, f"Worker {self.worker_id} picked up job '{job.name}' (attempt {job.attempts})")
