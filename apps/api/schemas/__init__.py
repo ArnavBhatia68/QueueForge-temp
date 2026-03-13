@@ -49,6 +49,7 @@ class JobCreate(JobBase):
 
 class JobResponse(JobBase):
     id: int
+    owner_id: int
     status: JobStatus
     attempts: int
     created_at: datetime

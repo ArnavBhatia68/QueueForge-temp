@@ -2,7 +2,7 @@
 
 QueueForge is a production-grade, distributed background job processing platform with a polished, real-time administrative dashboard.
 
-Built as a comprehensive portfolio project, QueueForge demonstrates a modern approach to asynchronous architectural patterns. It features an API-driven control plane, robust Python workers, Redis message passing, and a sleek Next.js (App Router) interface. 
+QueueForge demonstrates a modern approach to asynchronous architectural patterns. It features an API-driven control plane, robust Python workers, Redis message passing, and a sleek Next.js (App Router) interface. 
 
 ![QueueForge Architecture](./docs/architecture.png)
 
@@ -19,6 +19,29 @@ graph TD
     E[Worker Node (Python)] -.->|BLPOP| D
     E -->|Execute Handlers| F[Job Logic]
     E -->|Update Status| C
+```
+
+
+## Runtime Sequence (Enqueue -> Execute -> Observe)
+
+```mermaid
+sequenceDiagram
+    participant UI as Web Dashboard
+    participant API as FastAPI
+    participant DB as PostgreSQL
+    participant R as Redis
+    participant W as Worker
+
+    UI->>API: POST /api/v1/jobs
+    API->>DB: Insert job(status=queued)
+    API->>R: RPUSH queue:<name> {job_id}
+    W->>R: BLPOP queue:<name>
+    W->>DB: Update job(status=running)
+    W->>W: Execute handler
+    W->>DB: Update job(status=succeeded/failed) + logs
+    UI->>API: Poll jobs/analytics endpoints
+    API->>DB: Read latest state
+    API-->>UI: Updated metrics and timeline
 ```
 
 ## Tech Stack
@@ -75,7 +98,7 @@ pip install -r requirements.txt
 # Run migrations to build the tables
 PYTHONPATH=. alembic upgrade head
 
-# Seed demo queues, jobs, and a test user
+# Seed sample data for local development (optional)
 PYTHONPATH=. python scripts/seed.py
 
 # Start the API server on :8001
@@ -102,9 +125,7 @@ npm install
 npm run dev
 ```
 
-Visit `http://localhost:3000` and sign in with:
-**Email:** `demo@queueforge.io`
-**Password:** `password`
+Visit `http://localhost:3000/register` to create an account (or seed local sample data for quick exploration).
 
 ## Deployment (Track A: Vercel + Railway)
 QueueForge is structurally ready for cloud deployments. This architecture splits the Next.js frontend to Vercel and the Python backend services to Railway.
@@ -148,6 +169,9 @@ Import the repository into Vercel.
 
 ## API Summary
 JWT-authenticated REST API:
+- `GET /health` — Liveness probe for API process
+- `GET /health/deep` — Readiness probe that verifies PostgreSQL + Redis connectivity
+- `POST /api/v1/auth/register` — Create a new account
 - `POST /api/v1/auth/login` — Obtain access token
 - `GET /api/v1/jobs` — List jobs (optional `?status=` / `?queue_name=` filters)
 - `POST /api/v1/jobs` — Enqueue a new job
@@ -173,3 +197,39 @@ cd apps/api && PYTHONPATH=. alembic revision --autogenerate -m "your_change_desc
 - CRON schedule triggers for recurring jobs.
 - WebSocket streaming for dashboard updates (currently uses smart polling).
 - Complex DAG (Directed Acyclic Graph) workflow dependencies.
+
+
+## Production Readiness Checklist
+- Configure unique strong secrets and service credentials (`JWT_SECRET`, Postgres, Redis).
+- Set `FRONTEND_URL` and `NEXT_PUBLIC_API_URL` to deployed domains.
+- Run migrations in the deployed environment before first boot.
+- Disable demo-only login hints (`NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS` should be unset).
+- Replace sample worker handlers with your business-specific handlers.
+- Add automated integration tests for your critical job types and API flows.
+- Frontend now uses system fonts to keep builds deterministic in restricted CI/network environments.
+
+
+## Deployed Links
+- **Live Web App:** `ADD_YOUR_VERCEL_URL_HERE`
+- **Live API Base:** `ADD_YOUR_API_URL_HERE/api/v1`
+- **Demo User Policy:** Keep demo credentials disabled by default; enable local hints only with `NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS=true`.
+
+
+## Testing
+```bash
+# Frontend
+cd apps/web && npm run lint && npm run build
+
+# API tests
+cd apps/api && pip install -r requirements-dev.txt && PYTHONPATH=. pytest
+
+# Worker tests
+cd apps/worker && pip install -r requirements-dev.txt && PYTHONPATH=. pytest
+```
+
+
+## Known Limitations
+- Worker concurrency is single-process by default; scale by running multiple worker instances.
+- Handlers include realistic examples but are not tied to a real external product domain yet.
+- Dashboard uses polling (not WebSockets) for near-real-time updates.
+- No distributed tracing stack is configured out of the box.

@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAuthStore } from '@/hooks/use-auth';
 import { api } from '@/lib/api';
+import { useAuthStore } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,38 +12,45 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Layers } from 'lucide-react';
 import { toast } from 'sonner';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { setAuth, setUser } = useAuthStore();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
     try {
-      // 1. Get token
+      await api.post('/auth/register', { email, password });
+
       const formData = new URLSearchParams();
       formData.append('username', email);
       formData.append('password', password);
 
       const tokenRes = await api.post('/auth/login', formData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
-      
+
       const token = tokenRes.data.access_token;
       setAuth(true, token);
 
-      // 2. Get user profile
       const userRes = await api.get('/auth/me');
       setUser(userRes.data);
 
-      toast.success('Logged in successfully');
+      toast.success('Account created');
       router.push('/dashboard');
-    } catch {
-      toast.error('Invalid email or password');
+    } catch (error: unknown) {
+      const message =
+        typeof error === "object" &&
+        error !== null &&
+        "response" in error &&
+        typeof (error as { response?: { data?: { detail?: string } } }).response?.data?.detail === "string"
+          ? (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
+          : "Failed to create account";
+      toast.error(message);
       setAuth(false);
     } finally {
       setIsLoading(false);
@@ -59,32 +66,30 @@ export default function LoginPage() {
 
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold tracking-tight">Sign in</CardTitle>
+          <CardTitle className="text-2xl font-bold tracking-tight">Create account</CardTitle>
           <CardDescription>
-            Enter your email below to login to your dashboard
+            Start tracking your own jobs and analytics
           </CardDescription>
         </CardHeader>
-        <form onSubmit={handleLogin}>
+        <form onSubmit={handleRegister}>
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input 
-                id="email" 
-                type="email" 
-                placeholder="m@example.com" 
-                required 
+              <Input
+                id="email"
+                type="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-              </div>
-              <Input 
-                id="password" 
-                type="password" 
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
                 required
+                minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -92,23 +97,17 @@ export default function LoginPage() {
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
             <Button className="w-full" type="submit" disabled={isLoading}>
-              {isLoading ? "Signing in..." : "Sign In"}
+              {isLoading ? 'Creating account...' : 'Create account'}
             </Button>
             <p className="text-sm text-muted-foreground">
-              New here?{' '}
-              <Link href="/register" className="underline underline-offset-4">
-                Create account
+              Already have an account?{' '}
+              <Link href="/login" className="underline underline-offset-4">
+                Sign in
               </Link>
             </p>
           </CardFooter>
         </form>
       </Card>
-      
-      {process.env.NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS === 'true' && (
-        <p className="px-8 text-center text-sm text-muted-foreground mt-8">
-          Demo credentials are enabled for local development only.
-        </p>
-      )}
     </div>
   );
 }
