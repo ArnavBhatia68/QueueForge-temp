@@ -21,6 +21,29 @@ graph TD
     E -->|Update Status| C
 ```
 
+
+## Runtime Sequence (Enqueue -> Execute -> Observe)
+
+```mermaid
+sequenceDiagram
+    participant UI as Web Dashboard
+    participant API as FastAPI
+    participant DB as PostgreSQL
+    participant R as Redis
+    participant W as Worker
+
+    UI->>API: POST /api/v1/jobs
+    API->>DB: Insert job(status=queued)
+    API->>R: RPUSH queue:<name> {job_id}
+    W->>R: BLPOP queue:<name>
+    W->>DB: Update job(status=running)
+    W->>W: Execute handler
+    W->>DB: Update job(status=succeeded/failed) + logs
+    UI->>API: Poll jobs/analytics endpoints
+    API->>DB: Read latest state
+    API-->>UI: Updated metrics and timeline
+```
+
 ## Tech Stack
 **Frontend (Web Dashboard)**
 - Framework: Next.js 15 (App Router)
@@ -183,3 +206,4 @@ cd apps/api && PYTHONPATH=. alembic revision --autogenerate -m "your_change_desc
 - Replace sample worker handlers with your business-specific handlers.
 - Add automated integration tests for your critical job types and API flows.
 - Frontend now uses system fonts to keep builds deterministic in restricted CI/network environments.
+
