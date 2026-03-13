@@ -7,27 +7,34 @@ from typing import List
 from pydantic import BaseModel
 
 from core.database import get_db
-from models import Job, JobStatus, Queue, User
+from models import Job, JobStatus, User
 from schemas import AnalyticsOverview
 from api.deps import get_current_user
 
 router = APIRouter()
 
+
 @router.get("/overview", response_model=AnalyticsOverview)
 async def get_overview_analytics(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    total_result = await db.execute(select(func.count(Job.id)))
+    total_result = await db.execute(select(func.count(Job.id)).where(Job.owner_id == current_user.id))
     total_jobs = total_result.scalar() or 0
 
-    running_result = await db.execute(select(func.count(Job.id)).where(Job.status == JobStatus.RUNNING))
+    running_result = await db.execute(
+        select(func.count(Job.id)).where(Job.owner_id == current_user.id, Job.status == JobStatus.RUNNING)
+    )
     running_jobs = running_result.scalar() or 0
 
-    failed_result = await db.execute(select(func.count(Job.id)).where(Job.status == JobStatus.FAILED))
+    failed_result = await db.execute(
+        select(func.count(Job.id)).where(Job.owner_id == current_user.id, Job.status == JobStatus.FAILED)
+    )
     failed_jobs = failed_result.scalar() or 0
 
-    success_result = await db.execute(select(func.count(Job.id)).where(Job.status == JobStatus.SUCCEEDED))
+    success_result = await db.execute(
+        select(func.count(Job.id)).where(Job.owner_id == current_user.id, Job.status == JobStatus.SUCCEEDED)
+    )
     success_jobs = success_result.scalar() or 0
 
     success_rate = 0.0
@@ -36,18 +43,17 @@ async def get_overview_analytics(
         success_rate = (success_jobs / completed) * 100.0
 
     stmt = select(Job.started_at, Job.completed_at).where(
+        Job.owner_id == current_user.id,
         Job.status == JobStatus.SUCCEEDED,
         Job.started_at.isnot(None),
-        Job.completed_at.isnot(None)
+        Job.completed_at.isnot(None),
     )
     times_result = await db.execute(stmt)
     times = times_result.all()
 
     avg_processing_time_ms = 0.0
     if times:
-        total_ms = sum(
-            (t.completed_at - t.started_at).total_seconds() * 1000 for t in times
-        )
+        total_ms = sum((t.completed_at - t.started_at).total_seconds() * 1000 for t in times)
         avg_processing_time_ms = total_ms / len(times)
 
     return AnalyticsOverview(
@@ -55,7 +61,7 @@ async def get_overview_analytics(
         running_jobs=running_jobs,
         failed_jobs=failed_jobs,
         success_rate=round(success_rate, 2),
-        avg_processing_time_ms=round(avg_processing_time_ms, 2)
+        avg_processing_time_ms=round(avg_processing_time_ms, 2),
     )
 
 
@@ -69,15 +75,16 @@ class DailyJobCount(BaseModel):
 @router.get("/daily", response_model=List[DailyJobCount])
 async def get_daily_stats(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """Last 7 days of job counts grouped by date and status."""
     cutoff = datetime.utcnow() - timedelta(days=7)
-    stmt = select(Job.created_at, Job.status).where(Job.created_at >= cutoff)
+    stmt = select(Job.created_at, Job.status).where(
+        Job.owner_id == current_user.id,
+        Job.created_at >= cutoff,
+    )
     result = await db.execute(stmt)
     rows = result.all()
 
-    # Build a 7-day map indexed by date string
     days: dict[str, dict[str, int]] = {}
     for i in range(7):
         day = (datetime.utcnow() - timedelta(days=6 - i)).strftime("%Y-%m-%d")
@@ -94,9 +101,7 @@ async def get_daily_stats(
         else:
             days[day]["queued"] += 1
 
-    return [
-        DailyJobCount(date=day, **counts) for day, counts in sorted(days.items())
-    ]
+    return [DailyJobCount(date=day, **counts) for day, counts in sorted(days.items())]
 
 
 class RecentJobItem(BaseModel):
@@ -113,9 +118,13 @@ class RecentJobItem(BaseModel):
 @router.get("/recent", response_model=List[RecentJobItem])
 async def get_recent_jobs(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """Last 10 jobs for the activity feed."""
-    stmt = select(Job).order_by(Job.created_at.desc()).limit(10)
+    stmt = (
+        select(Job)
+        .where(Job.owner_id == current_user.id)
+        .order_by(Job.created_at.desc())
+        .limit(10)
+    )
     result = await db.execute(stmt)
     return result.scalars().all()

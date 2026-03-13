@@ -8,7 +8,7 @@ class UserBase(BaseModel):
     email: EmailStr
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(..., min_length=8, max_length=128)
 
 class UserResponse(UserBase):
     id: int
@@ -49,6 +49,7 @@ class JobCreate(JobBase):
 
 class JobResponse(JobBase):
     id: int
+    owner_id: int
     status: JobStatus
     attempts: int
     created_at: datetime

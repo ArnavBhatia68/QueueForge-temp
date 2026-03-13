@@ -26,8 +26,8 @@ export default function LandingPage() {
           <Link href="/login">
             <Button variant="ghost">Sign In</Button>
           </Link>
-          <Link href="/login">
-            <Button>View Demo</Button>
+          <Link href="/register">
+            <Button>Get Started</Button>
           </Link>
         </div>
       </header>
@@ -97,7 +97,7 @@ export default function LandingPage() {
       </main>
 
       <footer className="border-t py-8 px-6 text-center text-muted-foreground text-sm">
-        <p>&copy; {new Date().getFullYear()} QueueForge. Built as a demonstration project.</p>
+        <p>&copy; {new Date().getFullYear()} QueueForge. Built for modern distributed workloads.</p>
       </footer>
     </div>
   );
