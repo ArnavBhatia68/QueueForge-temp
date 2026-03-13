@@ -23,6 +23,14 @@ job_status_enum = sa.Enum(
     name='jobstatus'
 )
 
+# Used inside create_table — create_type=False prevents SQLAlchemy from
+# emitting a second CREATE TYPE after we've already done it with checkfirst=True
+job_status_enum_ref = sa.Enum(
+    'QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'RETRYING', 'CANCELLED',
+    name='jobstatus',
+    create_type=False
+)
+
 
 def upgrade() -> None:
     job_status_enum.create(op.get_bind(), checkfirst=True)
@@ -53,7 +61,7 @@ def upgrade() -> None:
         sa.Column('type', sa.String(), nullable=False),
         sa.Column('priority', sa.Integer(), nullable=True, server_default='0'),
         sa.Column('payload', sa.Text(), nullable=True),
-        sa.Column('status', job_status_enum, nullable=True, server_default='QUEUED'),
+        sa.Column('status', job_status_enum_ref, nullable=True, server_default='QUEUED'),
         sa.Column('attempts', sa.Integer(), nullable=True, server_default='0'),
         sa.Column('max_retries', sa.Integer(), nullable=True, server_default='3'),
         sa.Column('created_at', sa.DateTime(), nullable=True, server_default=sa.func.now()),
