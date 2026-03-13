@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { parseApiDate } from '@/lib/utils';
 import { JobDetail } from '@/types';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -29,7 +30,7 @@ export default function JobDetailsPage() {
   if (!job) return <div className="p-8">Loading job details...</div>;
 
   const durationMs = job.started_at && job.completed_at
-    ? new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()
+    ? parseApiDate(job.completed_at).getTime() - parseApiDate(job.started_at).getTime()
     : null;
 
   return (
@@ -63,9 +64,9 @@ export default function JobDetailsPage() {
         <CardContent className="grid md:grid-cols-2 gap-3 text-sm">
           <p><strong>Attempts:</strong> {job.attempts} / {job.max_retries}</p>
           <p><strong>Worker ID:</strong> {job.worker_id || 'Unassigned'}</p>
-          <p><strong>Created:</strong> {format(new Date(job.created_at), 'yyyy-MM-dd HH:mm:ss')}</p>
-          <p><strong>Started:</strong> {job.started_at ? format(new Date(job.started_at), 'yyyy-MM-dd HH:mm:ss') : '—'}</p>
-          <p><strong>Completed:</strong> {job.completed_at ? format(new Date(job.completed_at), 'yyyy-MM-dd HH:mm:ss') : '—'}</p>
+          <p><strong>Created:</strong> {format(parseApiDate(job.created_at), 'yyyy-MM-dd HH:mm:ss')}</p>
+          <p><strong>Started:</strong> {job.started_at ? format(parseApiDate(job.started_at), 'yyyy-MM-dd HH:mm:ss') : '—'}</p>
+          <p><strong>Completed:</strong> {job.completed_at ? format(parseApiDate(job.completed_at), 'yyyy-MM-dd HH:mm:ss') : '—'}</p>
           <p><strong>Duration:</strong> {durationMs !== null ? `${durationMs}ms` : '—'}</p>
           {job.error_message && <p className="md:col-span-2 text-red-600"><strong>Error:</strong> {job.error_message}</p>}
         </CardContent>
@@ -79,7 +80,7 @@ export default function JobDetailsPage() {
         <CardContent className="space-y-3">
           {job.logs.length === 0 ? <p className="text-muted-foreground">No logs available yet.</p> : job.logs.map((log) => (
             <div key={log.id} className="text-sm border-l pl-3">
-              <p className="text-xs text-muted-foreground">{format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss.SSS')} · {log.level}</p>
+              <p className="text-xs text-muted-foreground">{format(parseApiDate(log.timestamp), 'yyyy-MM-dd HH:mm:ss.SSS')} · {log.level}</p>
               <p className="font-mono text-xs">{log.message}</p>
             </div>
           ))}

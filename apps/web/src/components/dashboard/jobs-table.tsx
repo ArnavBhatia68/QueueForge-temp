@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { parseApiDate } from '@/lib/utils';
 import { Job, JobStatus, Queue } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -107,9 +108,9 @@ export function JobsTable() {
                   <TableCell><Badge variant="outline" className="capitalize">{job.status}</Badge></TableCell>
                   <TableCell>{job.priority}</TableCell>
                   <TableCell>{job.attempts}/{job.max_retries}</TableCell>
-                  <TableCell>{formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}</TableCell>
-                  <TableCell>{job.started_at ? formatDistanceToNow(new Date(job.started_at), { addSuffix: true }) : '—'}</TableCell>
-                  <TableCell>{job.completed_at ? formatDistanceToNow(new Date(job.completed_at), { addSuffix: true }) : '—'}</TableCell>
+                  <TableCell>{formatDistanceToNow(parseApiDate(job.created_at), { addSuffix: true })}</TableCell>
+                  <TableCell>{job.started_at ? formatDistanceToNow(parseApiDate(job.started_at), { addSuffix: true }) : '—'}</TableCell>
+                  <TableCell>{job.completed_at ? formatDistanceToNow(parseApiDate(job.completed_at), { addSuffix: true }) : '—'}</TableCell>
                   <TableCell>{job.worker_id || '—'}</TableCell>
                   <TableCell className="space-x-1">
                     {(job.status === 'failed' || job.status === 'cancelled') && <Button variant="ghost" size="icon" onClick={() => retryMutation.mutate(job.id)} title="Retry"><RefreshCcw className="h-4 w-4" /></Button>}

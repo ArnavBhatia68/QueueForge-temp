@@ -15,6 +15,7 @@ from api.deps import get_current_user
 router = APIRouter()
 
 ALLOWED_JOB_TYPES = {"webhook_request", "csv_processing", "text_transform"}
+GLOBAL_JOB_QUEUE = "queue:__all_jobs__"
 
 
 async def get_redis():
@@ -23,6 +24,11 @@ async def get_redis():
         yield redis
     finally:
         await redis.aclose()  # type: ignore
+
+
+async def enqueue_job(redis, job: Job) -> None:
+    payload = json.dumps({"job_id": job.id, "queue_name": job.queue_name})
+    await redis.rpush(GLOBAL_JOB_QUEUE, payload)
 
 
 @router.post("/", response_model=JobResponse)
@@ -43,7 +49,10 @@ async def create_job(
     if job_in.max_retries < 0 or job_in.max_retries > 10:
         raise HTTPException(status_code=400, detail="max_retries must be between 0 and 10")
 
-    payload_obj = json.loads(job_in.payload) if job_in.payload else {}
+    try:
+        payload_obj = json.loads(job_in.payload) if job_in.payload else {}
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"payload must be valid JSON: {exc.msg}")
 
     if job_in.type == "webhook_request":
         if not payload_obj.get("url"):
@@ -74,7 +83,7 @@ async def create_job(
     db.add(JobLog(job_id=job.id, message="Job queued", level="INFO"))
     await db.commit()
 
-    await redis.rpush(f"queue:{job.queue_name}", json.dumps({"job_id": job.id}))
+    await enqueue_job(redis, job)
 
     return job
 
@@ -99,7 +108,10 @@ async def list_jobs(
         stmt = stmt.where(Job.type == job_type)
     if search:
         like_term = f"%{search}%"
-        stmt = stmt.where((Job.name.ilike(like_term)) | (Job.queue_name.ilike(like_term)) | (Job.type.ilike(like_term)))
+        if search.isdigit():
+            stmt = stmt.where((Job.id == int(search)) | (Job.name.ilike(like_term)) | (Job.queue_name.ilike(like_term)) | (Job.type.ilike(like_term)))
+        else:
+            stmt = stmt.where((Job.name.ilike(like_term)) | (Job.queue_name.ilike(like_term)) | (Job.type.ilike(like_term)))
 
     stmt = stmt.offset(skip).limit(limit)
     result = await db.execute(stmt)
@@ -146,12 +158,13 @@ async def retry_job(
     job.error_message = None
     job.started_at = None
     job.completed_at = None
+    job.attempts = 0
 
     db.add(JobLog(job_id=job.id, message="Job retry requested by user", level="INFO"))
     await db.commit()
     await db.refresh(job)
 
-    await redis.rpush(f"queue:{job.queue_name}", json.dumps({"job_id": job.id}))
+    await enqueue_job(redis, job)
 
     return job
 

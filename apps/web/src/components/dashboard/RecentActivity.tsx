@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { api } from '@/lib/api';
+import { parseApiDate } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { JobStatus } from '@/types';
@@ -89,7 +90,7 @@ export function RecentActivity() {
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {job.queue_name} ·{' '}
-                    {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}
+                    {formatDistanceToNow(parseApiDate(job.created_at), { addSuffix: true })}
                   </p>
                 </div>
                 <Badge

@@ -13,11 +13,12 @@ from handlers import HANDLERS
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("worker")
 
+GLOBAL_JOB_QUEUE = "queue:__all_jobs__"
+
 
 class Worker:
     def __init__(self):
         self.redis = None
-        self.queues = [q.strip() for q in settings.QUEUES_TO_WATCH.split(",")]
         self.running = False
         self.worker_id = settings.WORKER_ID
 
@@ -26,12 +27,11 @@ class Worker:
         self.redis = await aioredis.from_url(settings.REDIS_URL, decode_responses=True)
         self.running = True
 
-        queue_keys = [f"queue:{q}" for q in self.queues]
-        logger.info(f"Watching queues: {queue_keys}")
+        logger.info(f"Watching queue: {GLOBAL_JOB_QUEUE}")
 
         while self.running:
             try:
-                result = await self.redis.blpop(queue_keys, timeout=settings.POLL_INTERVAL_SEC)
+                result = await self.redis.blpop([GLOBAL_JOB_QUEUE], timeout=settings.POLL_INTERVAL_SEC)
                 if result:
                     _, item = result
                     await self.process_job_msg(item)
@@ -67,6 +67,8 @@ class Worker:
                 return
             if job.status == JobStatus.CANCELLED:
                 logger.info(f"Job {job_id} is cancelled, ignoring")
+                return
+            if job.status not in (JobStatus.QUEUED, JobStatus.RETRYING):
                 return
 
             job.status = JobStatus.RUNNING
@@ -117,7 +119,8 @@ class Worker:
                 else:
                     await self.log_job(session, job.id, f"Job failed, requeuing for retry: {error_msg}", level="WARNING")
                     job.status = JobStatus.QUEUED
-                    await self.redis.rpush(f"queue:{job.queue_name}", json.dumps({"job_id": job.id}))
+                    payload = json.dumps({"job_id": job.id, "queue_name": job.queue_name})
+                    await self.redis.rpush(GLOBAL_JOB_QUEUE, payload)
 
             await session.commit()
 

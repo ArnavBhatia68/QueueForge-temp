@@ -14,3 +14,9 @@ export function formatDuration(ms: number) {
   const rs = s % 60;
   return `${m}m ${rs}s`;
 }
+
+
+export function parseApiDate(value: string) {
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(value)) return new Date(value);
+  return new Date(`${value}Z`);
+}

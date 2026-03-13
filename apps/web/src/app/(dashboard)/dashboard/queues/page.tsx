@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { parseApiDate } from '@/lib/utils';
 import { QueueStats } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -112,7 +113,7 @@ export default function QueuesPage() {
                       <TableCell>{queue.description || '—'}</TableCell>
                       <TableCell>{queue.total_jobs}</TableCell>
                       <TableCell>{queue.queued_jobs} / {queue.running_jobs} / {queue.failed_jobs}</TableCell>
-                      <TableCell>{queue.last_activity_at ? formatDistanceToNow(new Date(queue.last_activity_at), { addSuffix: true }) : 'No activity yet'}</TableCell>
+                      <TableCell>{queue.last_activity_at ? formatDistanceToNow(parseApiDate(queue.last_activity_at), { addSuffix: true }) : 'No activity yet'}</TableCell>
                     </TableRow>
                   ))
                 )}
