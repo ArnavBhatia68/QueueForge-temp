@@ -41,7 +41,7 @@ async def seed():
         await db.commit()
 
         # Generate Fake Jobs
-        job_types = ["send_email", "generate_report", "process_csv", "simulate_ml_task"]
+        job_types = ["send_email", "send_webhook", "generate_csv_report", "process_csv", "simulate_ml_task"]
         now = datetime.utcnow()
 
         for i in range(50):
@@ -65,7 +65,7 @@ async def seed():
                 queue_name=queue_obj.name,
                 type=random.choice(job_types),
                 priority=priority,
-                payload=json.dumps({"task_id": i, "user_id": random.randint(100, 999)}),
+                payload=json.dumps({"task_id": i, "user_id": random.randint(100, 999), "email": "user@example.com", "url": "https://httpbin.org/post", "rows": [{"id": i, "score": random.randint(1,100)}], "csv_content": "name,score\nalice,10\nbob,20", "text": "sample transaction"}),
                 status=status,
                 attempts=attempts,
                 created_at=created_at,
