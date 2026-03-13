@@ -1,7 +1,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy.future import select
 import redis.asyncio as aioredis  # type: ignore
 
@@ -21,37 +21,17 @@ class Worker:
         self.redis = None
         self.running = False
         self.worker_id = settings.WORKER_ID
-        self._last_queue_refresh = datetime.min.replace(tzinfo=timezone.utc)
-        self._queue_keys: list[str] = [GLOBAL_JOB_QUEUE]
-
-    async def _refresh_queue_keys(self, force: bool = False):
-        now = datetime.now(timezone.utc)
-        if not force and (now - self._last_queue_refresh).total_seconds() < 10:
-            return
-
-        cursor = 0
-        discovered: set[str] = {GLOBAL_JOB_QUEUE}
-        while True:
-            cursor, keys = await self.redis.scan(cursor=cursor, match="queue:*", count=100)  # type: ignore
-            discovered.update([k for k in keys if k != GLOBAL_JOB_QUEUE])
-            if cursor == 0:
-                break
-
-        self._queue_keys = sorted(discovered)
-        self._last_queue_refresh = now
 
     async def start(self):
         logger.info(f"Starting Worker {self.worker_id}")
         self.redis = await aioredis.from_url(settings.REDIS_URL, decode_responses=True)
         self.running = True
 
-        await self._refresh_queue_keys(force=True)
-        logger.info(f"Watching queues: {self._queue_keys}")
+        logger.info(f"Watching queue: {GLOBAL_JOB_QUEUE}")
 
         while self.running:
             try:
-                await self._refresh_queue_keys()
-                result = await self.redis.blpop(self._queue_keys, timeout=settings.POLL_INTERVAL_SEC)
+                result = await self.redis.blpop([GLOBAL_JOB_QUEUE], timeout=settings.POLL_INTERVAL_SEC)
                 if result:
                     _, item = result
                     await self.process_job_msg(item)
@@ -140,7 +120,6 @@ class Worker:
                     job.status = JobStatus.QUEUED
                     payload = json.dumps({"job_id": job.id, "queue_name": job.queue_name})
                     await self.redis.rpush(GLOBAL_JOB_QUEUE, payload)
-                    await self.redis.rpush(f"queue:{job.queue_name}", payload)
 
             await session.commit()
 

@@ -29,8 +29,6 @@ async def get_redis():
 async def enqueue_job(redis, job: Job) -> None:
     payload = json.dumps({"job_id": job.id, "queue_name": job.queue_name})
     await redis.rpush(GLOBAL_JOB_QUEUE, payload)
-    # Keep per-queue stream for compatibility/observability of queue-specific depth.
-    await redis.rpush(f"queue:{job.queue_name}", payload)
 
 
 @router.post("/", response_model=JobResponse)
