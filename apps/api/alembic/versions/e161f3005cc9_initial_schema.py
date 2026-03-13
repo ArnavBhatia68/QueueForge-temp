@@ -1,31 +1,22 @@
-"""initial_schema
-
-Revision ID: e161f3005cc9
-Revises:
-Create Date: 2026-03-12 15:36:42.527963
-
-"""
 from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
-# revision identifiers, used by Alembic.
 revision: str = 'e161f3005cc9'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-job_status_enum = sa.Enum(
+job_status_enum = postgresql.ENUM(
     'QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'RETRYING', 'CANCELLED',
     name='jobstatus'
 )
 
-# Used inside create_table — create_type=False prevents SQLAlchemy from
-# emitting a second CREATE TYPE after we've already done it with checkfirst=True
-job_status_enum_ref = sa.Enum(
+job_status_enum_ref = postgresql.ENUM(
     'QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'RETRYING', 'CANCELLED',
     name='jobstatus',
     create_type=False
@@ -33,7 +24,8 @@ job_status_enum_ref = sa.Enum(
 
 
 def upgrade() -> None:
-    job_status_enum.create(op.get_bind(), checkfirst=True)
+    bind = op.get_bind()
+    job_status_enum.create(bind, checkfirst=True)
 
     op.create_table(
         'users',
