@@ -5,6 +5,7 @@ import json
 import re
 import urllib.request
 from collections import Counter
+from statistics import mean
 from urllib.error import HTTPError, URLError
 
 
@@ -67,7 +68,7 @@ async def csv_processing(payload: dict) -> dict:
         raise ValueError("payload.csv_text is required")
 
     operation = payload.get("operation")
-    allowed = {"csv_to_json", "deduplicate_rows", "validate_required_columns", "summary_statistics"}
+    allowed = {"csv_to_json", "dedupe_rows", "validate_required_columns", "summary_stats"}
     if operation not in allowed:
         raise ValueError(f"Unsupported CSV operation: {operation}")
 
@@ -86,7 +87,7 @@ async def csv_processing(payload: dict) -> dict:
             "columns": fieldnames,
         }
 
-    if operation == "deduplicate_rows":
+    if operation == "dedupe_rows":
         seen = set()
         deduped = []
         for row in rows:
@@ -104,30 +105,41 @@ async def csv_processing(payload: dict) -> dict:
 
     if operation == "validate_required_columns":
         required_columns = payload.get("required_columns")
-        if not isinstance(required_columns, list) or not all(isinstance(col, str) for col in required_columns):
-            raise ValueError("payload.required_columns must be a list of column names")
+        if not isinstance(required_columns, list) or not all(isinstance(col, str) and col.strip() for col in required_columns):
+            raise ValueError("payload.required_columns must be a non-empty list of column names")
 
         missing_columns = [col for col in required_columns if col not in fieldnames]
-        row_issues = []
-        for index, row in enumerate(rows, start=1):
-            missing_values = [col for col in required_columns if not str(row.get(col, "")).strip()]
-            if missing_values:
-                row_issues.append({"row": index, "missing_values": missing_values})
-
         return {
             "operation": operation,
+            "valid": len(missing_columns) == 0,
             "columns": fieldnames,
+            "required_columns": required_columns,
             "missing_columns": missing_columns,
-            "invalid_row_count": len(row_issues),
-            "issues": row_issues[:100],
         }
 
-    # summary_statistics
+    # summary_stats
     completeness = Counter()
+    numeric_values: dict[str, list[float]] = {col: [] for col in fieldnames}
+
     for row in rows:
         for col in fieldnames:
-            if str(row.get(col, "")).strip():
+            value = str(row.get(col, "")).strip()
+            if value:
                 completeness[col] += 1
+                try:
+                    numeric_values[col].append(float(value))
+                except ValueError:
+                    pass
+
+    numeric_summary = {
+        col: {
+            "count": len(values),
+            "min": min(values) if values else None,
+            "max": max(values) if values else None,
+            "avg": round(mean(values), 6) if values else None,
+        }
+        for col, values in numeric_values.items()
+    }
 
     return {
         "operation": operation,
@@ -140,6 +152,7 @@ async def csv_processing(payload: dict) -> dict:
             }
             for col in fieldnames
         },
+        "numeric_summary": numeric_summary,
     }
 
 
@@ -152,9 +165,9 @@ async def text_transform(payload: dict) -> dict:
     allowed_modes = {
         "pretty_json",
         "extract_emails",
-        "deduplicate_lines",
+        "dedupe_lines",
         "normalize_whitespace",
-        "count_tokens_lines_words",
+        "counts",
     }
     if mode not in allowed_modes:
         raise ValueError(f"Unsupported transform mode: {mode}")
@@ -170,7 +183,7 @@ async def text_transform(payload: dict) -> dict:
         emails = sorted(set(re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", input_text)))
         return {"mode": mode, "count": len(emails), "emails": emails}
 
-    if mode == "deduplicate_lines":
+    if mode == "dedupe_lines":
         seen = set()
         lines = []
         for line in input_text.splitlines():
@@ -183,14 +196,11 @@ async def text_transform(payload: dict) -> dict:
         normalized = re.sub(r"\s+", " ", input_text).strip()
         return {"mode": mode, "output": normalized}
 
-    token_count = len(input_text.split())
-    line_count = len(input_text.splitlines())
-    word_count = len(re.findall(r"\b\w+\b", input_text))
     return {
         "mode": mode,
-        "tokens": token_count,
-        "lines": line_count,
-        "words": word_count,
+        "words": len(re.findall(r"\b\w+\b", input_text)),
+        "lines": len(input_text.splitlines()),
+        "characters": len(input_text),
     }
 
 

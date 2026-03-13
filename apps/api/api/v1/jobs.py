@@ -60,11 +60,13 @@ async def create_job(
     elif job_in.type == "csv_processing":
         if not payload_obj.get("csv_text"):
             raise HTTPException(status_code=400, detail="CSV job requires payload.csv_text")
-        if payload_obj.get("operation") not in {"csv_to_json", "deduplicate_rows", "validate_required_columns", "summary_statistics"}:
+        if payload_obj.get("operation") not in {"csv_to_json", "dedupe_rows", "validate_required_columns", "summary_stats"}:
             raise HTTPException(status_code=400, detail="CSV job has unsupported operation")
     elif job_in.type == "text_transform":
         if not payload_obj.get("input"):
             raise HTTPException(status_code=400, detail="Text job requires payload.input")
+        if payload_obj.get("mode") not in {"pretty_json", "dedupe_lines", "normalize_whitespace", "extract_emails", "counts"}:
+            raise HTTPException(status_code=400, detail="Text transform has unsupported mode")
 
     job = Job(
         name=job_in.name,

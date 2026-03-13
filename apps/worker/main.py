@@ -92,6 +92,10 @@ class Worker:
 
                 payload = json.loads(job.payload) if job.payload else {}
                 await self.log_job(session, job.id, "Validated input payload")
+                if job.type == "text_transform" and payload.get("mode"):
+                    await self.log_job(session, job.id, f"Text transform mode: {payload.get('mode')}")
+                if job.type == "csv_processing" and payload.get("operation"):
+                    await self.log_job(session, job.id, f"CSV operation: {payload.get('operation')}")
                 await session.commit()
 
                 result_data = await handler_fn(payload)

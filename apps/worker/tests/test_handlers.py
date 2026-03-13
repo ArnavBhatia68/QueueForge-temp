@@ -6,26 +6,50 @@ import pytest
 from handlers import csv_processing, text_transform, webhook_request
 
 
-def test_csv_summary_statistics():
-    payload = {"operation": "summary_statistics", "csv_text": "name,email\nada,ada@example.com\nlin,"}
+def test_csv_summary_stats():
+    payload = {"operation": "summary_stats", "csv_text": "name,amount\nA,10\nB,20"}
     result = asyncio.run(csv_processing(payload))
     assert result["row_count"] == 2
-    assert "email" in result["columns"]
+    assert "amount" in result["columns"]
+    assert result["numeric_summary"]["amount"]["avg"] == 15.0
 
 
-def test_csv_validate_required_columns_reports_issues():
+def test_csv_dedupe_rows():
+    payload = {"operation": "dedupe_rows", "csv_text": "name,amount\nA,10\nA,10\nB,20"}
+    result = asyncio.run(csv_processing(payload))
+    assert result["deduplicated_count"] == 2
+
+
+def test_csv_validate_required_columns_reports_missing_columns():
     payload = {
         "operation": "validate_required_columns",
-        "required_columns": ["name", "email"],
-        "csv_text": "name,email\nada,ada@example.com\nlin,",
+        "required_columns": ["name", "amount", "email"],
+        "csv_text": "name,amount\nA,10\nB,20",
     }
     result = asyncio.run(csv_processing(payload))
-    assert result["invalid_row_count"] == 1
+    assert result["valid"] is False
+    assert result["missing_columns"] == ["email"]
 
 
-def test_text_transform_extract_emails():
-    result = asyncio.run(text_transform({"mode": "extract_emails", "input": "a@x.com b@x.com a@x.com"}))
-    assert result["count"] == 2
+def test_text_transform_dedupe_lines():
+    result = asyncio.run(text_transform({"mode": "dedupe_lines", "input": "a\nb\na"}))
+    assert result["output"] == "a\nb"
+
+
+def test_text_transform_counts():
+    result = asyncio.run(text_transform({"mode": "counts", "input": "one two\nthree"}))
+    assert result["words"] == 3
+    assert result["lines"] == 2
+
+
+def test_unsupported_transform_mode_fails_cleanly():
+    with pytest.raises(ValueError, match="Unsupported transform mode"):
+        asyncio.run(text_transform({"mode": "deduplicate_lines", "input": "a"}))
+
+
+def test_unsupported_csv_operation_fails_cleanly():
+    with pytest.raises(ValueError, match="Unsupported CSV operation"):
+        asyncio.run(csv_processing({"operation": "summary_statistics", "csv_text": "a,b\n1,2"}))
 
 
 def test_webhook_validates_url():
