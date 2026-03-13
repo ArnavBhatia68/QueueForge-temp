@@ -8,7 +8,17 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { formatDistanceToNow, format } from 'date-fns';
 import { formatDuration } from '@/lib/utils';
-import { Clock, Server, PlayCircle, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Clock, PlayCircle, AlertCircle, CheckCircle2 } from 'lucide-react';
+
+
+const formatJsonContent = (value: string | null | undefined, fallback: string) => {
+  if (!value) return fallback;
+  try {
+    return JSON.stringify(JSON.parse(value), null, 2);
+  } catch {
+    return value;
+  }
+};
 
 export default function JobDetailsPage() {
   const params = useParams();
@@ -99,13 +109,13 @@ export default function JobDetailsPage() {
             <div>
                 <span className="text-sm text-muted-foreground font-medium mb-1 block">Input Payload</span>
                 <pre className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-32">
-                    {job.payload ? JSON.stringify(JSON.parse(job.payload), null, 2) : '{}'}
+                    {formatJsonContent(job.payload, '{}')}
                 </pre>
             </div>
             <div>
                 <span className="text-sm text-muted-foreground font-medium mb-1 block">Output Result</span>
                 <pre className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-32">
-                    {job.result ? JSON.stringify(JSON.parse(job.result), null, 2) : 'No result yet'}
+                    {formatJsonContent(job.result, 'No result yet')}
                 </pre>
             </div>
           </CardContent>

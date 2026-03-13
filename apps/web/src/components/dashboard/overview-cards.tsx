@@ -3,7 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { AnalyticsOverview } from '@/types';
-import { Activity, Clock, ServerCrash, CheckCircle2 } from 'lucide-react';
+import { Activity, Clock, CheckCircle2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export function OverviewCards() {

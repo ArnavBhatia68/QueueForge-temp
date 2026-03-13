@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Job, JobStatus } from '@/types';
@@ -17,11 +18,11 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RefreshCcw, XCircle, Search, Info } from 'lucide-react';
-import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
 export function JobsTable() {
   const [statusFilter, setStatusFilter] = useState<JobStatus | ''>('');
+  const [searchTerm, setSearchTerm] = useState('');
   const queryClient = useQueryClient();
 
   const { data: jobs, isLoading } = useQuery({
@@ -32,8 +33,19 @@ export function JobsTable() {
       });
       return data;
     },
-    refetchInterval: 3000, 
+    refetchInterval: 3000,
   });
+
+  const filteredJobs = useMemo(() => {
+    if (!jobs) return [];
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) return jobs;
+
+    return jobs.filter((job) => {
+      const searchable = `${job.id} ${job.type} ${job.queue_name} ${job.status} ${job.payload ?? ''}`.toLowerCase();
+      return searchable.includes(term);
+    });
+  }, [jobs, searchTerm]);
 
   const retryMutation = useMutation({
     mutationFn: (id: number) => api.post(`/jobs/${id}/retry/`),
@@ -67,18 +79,20 @@ export function JobsTable() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex w-full max-w-sm items-center space-x-2 border rounded-md px-3 py-1 bg-background focus-within:ring-1 focus-within:ring-primary">
           <Search className="h-4 w-4 text-muted-foreground mr-2" />
-          <input 
-            className="flex h-8 w-full bg-transparent p-0 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 text-sm border-0" 
-            placeholder="Search payload or ID (UI only)" 
+          <input
+            className="flex h-8 w-full bg-transparent p-0 placeholder:text-muted-foreground focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 text-sm border-0"
+            placeholder="Search job ID, type, queue, status, or payload"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
         <div className="flex gap-2">
-          <select 
+          <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as any)}
+            onChange={(e) => setStatusFilter(e.target.value as JobStatus | '')}
             className="h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
           >
             <option value="">All Statuses</option>
@@ -86,6 +100,7 @@ export function JobsTable() {
             <option value="running">Running</option>
             <option value="succeeded">Succeeded</option>
             <option value="failed">Failed</option>
+            <option value="cancelled">Cancelled</option>
           </select>
         </div>
       </div>
@@ -109,14 +124,14 @@ export function JobsTable() {
                   Loading jobs...
                 </TableCell>
               </TableRow>
-            ) : jobs?.length === 0 ? (
+            ) : filteredJobs.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-24 text-center text-muted-foreground bg-muted/50">
                   No jobs found.
                 </TableCell>
               </TableRow>
             ) : (
-              jobs?.map((job) => (
+              filteredJobs.map((job) => (
                 <TableRow key={job.id}>
                   <TableCell className="font-medium text-xs">#{job.id}</TableCell>
                   <TableCell>
@@ -135,7 +150,6 @@ export function JobsTable() {
                     )}
                   </TableCell>
                   <TableCell className="text-right space-x-2">
-                    {/* Actions */}
                     {(job.status === 'failed' || job.status === 'cancelled') && (
                       <Button variant="ghost" size="icon" onClick={() => retryMutation.mutate(job.id)} title="Retry">
                         <RefreshCcw className="h-4 w-4 text-emerald-500" />
@@ -146,9 +160,11 @@ export function JobsTable() {
                         <XCircle className="h-4 w-4 text-slate-500" />
                       </Button>
                     )}
-                    <Button variant="ghost" size="icon" title="Details">
-                      <Info className="h-4 w-4" />
-                    </Button>
+                    <Link href={`/dashboard/jobs/${job.id}`}>
+                      <Button variant="ghost" size="icon" title="Details">
+                        <Info className="h-4 w-4" />
+                      </Button>
+                    </Link>
                   </TableCell>
                 </TableRow>
               ))
