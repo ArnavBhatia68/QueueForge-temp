@@ -1,6 +1,6 @@
 'use client';
 
-import { Activity, Layers, PlayCircle, Settings, LogOut } from 'lucide-react';
+import { Activity, Layers, PlayCircle, LogOut } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/hooks/use-auth';
