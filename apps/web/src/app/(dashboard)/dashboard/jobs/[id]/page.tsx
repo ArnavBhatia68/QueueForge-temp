@@ -2,154 +2,88 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { parseApiDate } from '@/lib/utils';
 import { JobDetail } from '@/types';
 import { useParams } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { formatDistanceToNow, format } from 'date-fns';
-import { formatDuration } from '@/lib/utils';
-import { Clock, PlayCircle, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { format } from 'date-fns';
 
-
-const formatJsonContent = (value: string | null | undefined, fallback: string) => {
+const pretty = (value: string | null | undefined, fallback: string) => {
   if (!value) return fallback;
-  try {
-    return JSON.stringify(JSON.parse(value), null, 2);
-  } catch {
-    return value;
-  }
+  try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
 };
 
 export default function JobDetailsPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const { data: job, isLoading } = useQuery({
+  const { data: job } = useQuery({
     queryKey: ['job', id],
-    queryFn: async () => {
-      const { data } = await api.get<JobDetail>(`/jobs/${id}`);
-      return data;
+    queryFn: async () => (await api.get<JobDetail>(`/jobs/${id}`)).data,
+    refetchInterval: (q) => {
+      const status = q.state.data?.status;
+      return status && ['succeeded', 'failed', 'cancelled'].includes(status) ? false : 3000;
     },
-    refetchInterval: (query) => {
-        // Stop polling if done
-        const jobStatus = query.state?.data?.status;
-        if (jobStatus === 'succeeded' || jobStatus === 'failed' || jobStatus === 'cancelled') {
-            return false;
-        }
-        return 3000;
-    }
   });
 
-  if (isLoading) return <div className="p-8">Loading job details...</div>;
-  if (!job) return <div className="p-8">Job not found.</div>;
+  if (!job) return <div className="p-8">Loading job details...</div>;
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'queued': return <Clock className="h-5 w-5 text-amber-500" />;
-      case 'running': return <PlayCircle className="h-5 w-5 text-blue-500 animate-pulse" />;
-      case 'succeeded': return <CheckCircle2 className="h-5 w-5 text-emerald-500" />;
-      case 'failed': return <AlertCircle className="h-5 w-5 text-red-500" />;
-      default: return <Clock className="h-5 w-5 text-gray-500" />;
-    }
-  };
-
-  const duration = job.started_at && job.completed_at 
-    ? formatDuration(new Date(job.completed_at).getTime() - new Date(job.started_at).getTime()) 
-    : '-';
+  const durationMs = job.started_at && job.completed_at
+    ? parseApiDate(job.completed_at).getTime() - parseApiDate(job.started_at).getTime()
+    : null;
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight mb-2">Job #{job.id}</h2>
-          <div className="flex items-center space-x-3 text-sm text-muted-foreground">
-             <Badge variant="outline">{job.queue_name}</Badge>
-             <span>Type: {job.type}</span>
-             <span>Created: {formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}</span>
-          </div>
-        </div>
-        <div className="flex items-center space-x-2">
-           {getStatusIcon(job.status)}
-           <span className="font-medium capitalize text-lg">{job.status}</span>
-        </div>
+      <div>
+        <h2 className="text-3xl font-bold tracking-tight">{job.name}</h2>
+        <p className="text-muted-foreground">Job #{job.id}</p>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Execution Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            <div className="flex justify-between border-b pb-2">
-              <span className="text-muted-foreground">Worker ID</span>
-              <span className="font-mono">{job.worker_id || 'unassigned'}</span>
-            </div>
-            <div className="flex justify-between border-b pb-2">
-              <span className="text-muted-foreground">Attempts</span>
-              <span>{job.attempts} / {job.max_retries}</span>
-            </div>
-            <div className="flex justify-between border-b pb-2">
-              <span className="text-muted-foreground">Duration</span>
-              <span>{duration}</span>
-            </div>
-            {job.error_message && (
-                <div className="mt-4 p-3 bg-red-500/10 text-red-500 rounded-md">
-                    <span className="font-semibold block mb-1">Error:</span>
-                    {job.error_message}
-                </div>
-            )}
-          </CardContent>
-        </Card>
+      <Card>
+        <CardHeader><CardTitle>Overview</CardTitle></CardHeader>
+        <CardContent className="grid md:grid-cols-2 gap-3 text-sm">
+          <p><strong>ID:</strong> {job.id}</p><p><strong>Queue:</strong> {job.queue_name}</p>
+          <p><strong>Type:</strong> {job.type}</p><p><strong>Status:</strong> <Badge variant="outline" className="capitalize">{job.status}</Badge></p>
+        </CardContent>
+      </Card>
 
+      <div className="grid md:grid-cols-2 gap-6">
         <Card>
-          <CardHeader>
-            <CardTitle>Payload & Result</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-                <span className="text-sm text-muted-foreground font-medium mb-1 block">Input Payload</span>
-                <pre className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-32">
-                    {formatJsonContent(job.payload, '{}')}
-                </pre>
-            </div>
-            <div>
-                <span className="text-sm text-muted-foreground font-medium mb-1 block">Output Result</span>
-                <pre className="bg-muted p-3 rounded-md text-xs overflow-auto max-h-32">
-                    {formatJsonContent(job.result, 'No result yet')}
-                </pre>
-            </div>
-          </CardContent>
+          <CardHeader><CardTitle>Input</CardTitle></CardHeader>
+          <CardContent><pre className="bg-muted rounded p-3 text-xs overflow-auto max-h-64">{pretty(job.payload, 'No input payload')}</pre></CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Output</CardTitle></CardHeader>
+          <CardContent><pre className="bg-muted rounded p-3 text-xs overflow-auto max-h-64">{pretty(job.result, 'No output yet')}</pre></CardContent>
         </Card>
       </div>
 
       <Card>
+        <CardHeader><CardTitle>Execution</CardTitle></CardHeader>
+        <CardContent className="grid md:grid-cols-2 gap-3 text-sm">
+          <p><strong>Attempts:</strong> {job.attempts} / {job.max_retries}</p>
+          <p><strong>Worker ID:</strong> {job.worker_id || 'Unassigned'}</p>
+          <p><strong>Created:</strong> {format(parseApiDate(job.created_at), 'yyyy-MM-dd HH:mm:ss')}</p>
+          <p><strong>Started:</strong> {job.started_at ? format(parseApiDate(job.started_at), 'yyyy-MM-dd HH:mm:ss') : '—'}</p>
+          <p><strong>Completed:</strong> {job.completed_at ? format(parseApiDate(job.completed_at), 'yyyy-MM-dd HH:mm:ss') : '—'}</p>
+          <p><strong>Duration:</strong> {durationMs !== null ? `${durationMs}ms` : '—'}</p>
+          {job.error_message && <p className="md:col-span-2 text-red-600"><strong>Error:</strong> {job.error_message}</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader>
-          <CardTitle>Execution Timeline</CardTitle>
-          <CardDescription>Line by line execution logs from the worker.</CardDescription>
+          <CardTitle>Logs timeline</CardTitle>
+          <CardDescription>Queued, processing, retries, and completion logs from the worker.</CardDescription>
         </CardHeader>
-        <CardContent>
-            <div className="space-y-4">
-                {job.logs.map((log) => (
-                    <div key={log.id} className="flex space-x-4 text-sm">
-                        <div className="w-48 text-muted-foreground whitespace-nowrap">
-                            {format(new Date(log.timestamp), 'yyyy-MM-dd HH:mm:ss.SSS')}
-                        </div>
-                        <Badge variant="outline" className={
-                            log.level === 'ERROR' ? 'text-red-500 border-red-500/50' : 
-                            log.level === 'WARNING' ? 'text-amber-500 border-amber-500/50' : 
-                            'text-muted-foreground'
-                        }>
-                            {log.level}
-                        </Badge>
-                        <div className="flex-1 font-mono text-xs mt-0.5">
-                            {log.message}
-                        </div>
-                    </div>
-                ))}
-                {job.logs.length === 0 && (
-                    <div className="text-muted-foreground text-center py-4">No logs available.</div>
-                )}
+        <CardContent className="space-y-3">
+          {job.logs.length === 0 ? <p className="text-muted-foreground">No logs available yet.</p> : job.logs.map((log) => (
+            <div key={log.id} className="text-sm border-l pl-3">
+              <p className="text-xs text-muted-foreground">{format(parseApiDate(log.timestamp), 'yyyy-MM-dd HH:mm:ss.SSS')} · {log.level}</p>
+              <p className="font-mono text-xs">{log.message}</p>
             </div>
+          ))}
         </CardContent>
       </Card>
     </div>

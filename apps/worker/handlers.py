@@ -2,131 +2,210 @@ import asyncio
 import csv
 import io
 import json
+import re
 import urllib.request
+from collections import Counter
 from statistics import mean
+from urllib.error import HTTPError, URLError
 
 
-async def send_email(payload: dict) -> dict:
-    """Simple deterministic email simulation with input validation."""
-    to_email = payload.get("email")
-    if not to_email:
-        raise ValueError("Missing required field: email")
-
-    subject = payload.get("subject", "QueueForge Notification")
-    body = payload.get("body", "Hello from QueueForge")
-    await asyncio.sleep(0)
-    return {
-        "message": "Email request accepted",
-        "to": to_email,
-        "subject": subject,
-        "body_length": len(body),
-    }
+def _body_preview(raw: str, limit: int = 1500) -> str:
+    return raw[:limit]
 
 
-async def send_webhook(payload: dict) -> dict:
-    """Send a JSON webhook to a target URL."""
+async def webhook_request(payload: dict) -> dict:
     url = payload.get("url")
     if not url:
-        raise ValueError("Missing required field: url")
+        raise ValueError("payload.url is required")
 
-    body = payload.get("body", {})
-    method = payload.get("method", "POST").upper()
-    timeout = float(payload.get("timeout", 5))
+    method = str(payload.get("method", "POST")).upper()
+    if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"}:
+        raise ValueError("method must be GET, POST, PUT, PATCH, or DELETE")
 
-    if method not in {"POST", "PUT", "PATCH"}:
-        raise ValueError("Webhook method must be one of POST, PUT, PATCH")
+    timeout = float(payload.get("timeout_seconds", 10))
+    headers = payload.get("headers") or {}
+    if not isinstance(headers, dict):
+        raise ValueError("headers must be a JSON object")
+
+    body = payload.get("body")
 
     def _request() -> dict:
-        data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(
-            url=url,
-            data=data,
-            method=method,
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=timeout) as response:  # nosec B310
-            raw = response.read().decode("utf-8", errors="replace")
+        encoded_body = None
+        request_headers = {"User-Agent": "QueueForge-Worker/1.0", **headers}
+        if body is not None:
+            encoded_body = json.dumps(body).encode("utf-8")
+            request_headers.setdefault("Content-Type", "application/json")
+
+        req = urllib.request.Request(url=url, data=encoded_body, method=method, headers=request_headers)
+
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:  # nosec B310
+                raw = response.read().decode("utf-8", errors="replace")
+                return {
+                    "ok": 200 <= response.getcode() < 300,
+                    "status_code": response.getcode(),
+                    "response_headers": dict(response.headers.items()),
+                    "response_body_preview": _body_preview(raw),
+                }
+        except HTTPError as exc:
+            raw = exc.read().decode("utf-8", errors="replace") if exc.fp else str(exc)
             return {
-                "status_code": response.getcode(),
-                "response_preview": raw[:200],
+                "ok": False,
+                "status_code": exc.code,
+                "response_headers": dict(exc.headers.items()) if exc.headers else {},
+                "response_body_preview": _body_preview(raw),
+                "error": f"HTTP {exc.code}",
             }
+        except URLError as exc:
+            raise RuntimeError(f"Network request failed: {exc.reason}")
 
-    result = await asyncio.to_thread(_request)
-    return {
-        "url": url,
-        "method": method,
-        **result,
-    }
+    return await asyncio.to_thread(_request)
 
 
-async def generate_csv_report(payload: dict) -> dict:
-    """Generate a CSV report from input records and compute simple stats."""
-    rows = payload.get("rows")
-    if not isinstance(rows, list) or len(rows) == 0:
-        raise ValueError("rows must be a non-empty list of objects")
-    if not all(isinstance(r, dict) for r in rows):
-        raise ValueError("Each row must be an object")
+async def csv_processing(payload: dict) -> dict:
+    csv_text = payload.get("csv_text")
+    if not isinstance(csv_text, str) or not csv_text.strip():
+        raise ValueError("payload.csv_text is required")
 
-    headers = sorted({k for row in rows for k in row.keys()})
-    if not headers:
-        raise ValueError("rows contain no columns")
+    operation = payload.get("operation")
+    allowed = {"csv_to_json", "dedupe_rows", "validate_required_columns", "summary_stats"}
+    if operation not in allowed:
+        raise ValueError(f"Unsupported CSV operation: {operation}")
 
-    output = io.StringIO()
-    writer = csv.DictWriter(output, fieldnames=headers)
-    writer.writeheader()
-    writer.writerows(rows)
-
-    numeric_values = []
-    for row in rows:
-        for value in row.values():
-            if isinstance(value, (int, float)):
-                numeric_values.append(float(value))
-
-    return {
-        "columns": headers,
-        "row_count": len(rows),
-        "csv_preview": output.getvalue().splitlines()[:6],
-        "numeric_mean": round(mean(numeric_values), 4) if numeric_values else None,
-    }
-
-
-async def process_csv(payload: dict) -> dict:
-    """Parse CSV content and return structural metrics."""
-    csv_content = payload.get("csv_content")
-    if not csv_content or not isinstance(csv_content, str):
-        raise ValueError("Missing required field: csv_content")
-
-    reader = csv.DictReader(io.StringIO(csv_content))
+    reader = csv.DictReader(io.StringIO(csv_text))
     if not reader.fieldnames:
         raise ValueError("CSV header row is required")
 
-    row_count = 0
-    invalid_rows = 0
-    for row in reader:
-        row_count += 1
-        if any(v is None for v in row.values()):
-            invalid_rows += 1
+    rows = list(reader)
+    fieldnames = reader.fieldnames
+
+    if operation == "csv_to_json":
+        return {
+            "operation": operation,
+            "rows": rows,
+            "row_count": len(rows),
+            "columns": fieldnames,
+        }
+
+    if operation == "dedupe_rows":
+        seen = set()
+        deduped = []
+        for row in rows:
+            key = tuple((k, row.get(k, "")) for k in fieldnames)
+            if key not in seen:
+                seen.add(key)
+                deduped.append(row)
+        return {
+            "operation": operation,
+            "original_count": len(rows),
+            "deduplicated_count": len(deduped),
+            "removed_duplicates": len(rows) - len(deduped),
+            "rows": deduped,
+        }
+
+    if operation == "validate_required_columns":
+        required_columns = payload.get("required_columns")
+        if not isinstance(required_columns, list) or not all(isinstance(col, str) and col.strip() for col in required_columns):
+            raise ValueError("payload.required_columns must be a non-empty list of column names")
+
+        missing_columns = [col for col in required_columns if col not in fieldnames]
+        return {
+            "operation": operation,
+            "valid": len(missing_columns) == 0,
+            "columns": fieldnames,
+            "required_columns": required_columns,
+            "missing_columns": missing_columns,
+        }
+
+    # summary_stats
+    completeness = Counter()
+    numeric_values: dict[str, list[float]] = {col: [] for col in fieldnames}
+
+    for row in rows:
+        for col in fieldnames:
+            value = str(row.get(col, "")).strip()
+            if value:
+                completeness[col] += 1
+                try:
+                    numeric_values[col].append(float(value))
+                except ValueError:
+                    pass
+
+    numeric_summary = {
+        col: {
+            "count": len(values),
+            "min": min(values) if values else None,
+            "max": max(values) if values else None,
+            "avg": round(mean(values), 6) if values else None,
+        }
+        for col, values in numeric_values.items()
+    }
 
     return {
-        "columns": reader.fieldnames,
-        "rows_processed": row_count,
-        "invalid_rows": invalid_rows,
+        "operation": operation,
+        "row_count": len(rows),
+        "columns": fieldnames,
+        "completeness": {
+            col: {
+                "non_empty": completeness[col],
+                "empty": len(rows) - completeness[col],
+            }
+            for col in fieldnames
+        },
+        "numeric_summary": numeric_summary,
     }
 
 
-async def simulate_ml_task(payload: dict) -> dict:
-    """Deterministic classifier-style output for demo workloads."""
-    text = str(payload.get("text", payload))
-    score = (sum(ord(c) for c in text) % 1000) / 1000
-    label = "fraud" if score >= 0.7 else "legit"
-    await asyncio.sleep(0)
-    return {"confidence": round(score, 3), "label": label}
+async def text_transform(payload: dict) -> dict:
+    data_input = payload.get("input")
+    if data_input is None:
+        raise ValueError("payload.input is required")
+
+    mode = payload.get("mode")
+    allowed_modes = {
+        "pretty_json",
+        "extract_emails",
+        "dedupe_lines",
+        "normalize_whitespace",
+        "counts",
+    }
+    if mode not in allowed_modes:
+        raise ValueError(f"Unsupported transform mode: {mode}")
+
+    input_text = data_input if isinstance(data_input, str) else json.dumps(data_input)
+
+    if mode == "pretty_json":
+        parsed = json.loads(input_text)
+        pretty = json.dumps(parsed, indent=2, sort_keys=True)
+        return {"mode": mode, "output": pretty}
+
+    if mode == "extract_emails":
+        emails = sorted(set(re.findall(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}", input_text)))
+        return {"mode": mode, "count": len(emails), "emails": emails}
+
+    if mode == "dedupe_lines":
+        seen = set()
+        lines = []
+        for line in input_text.splitlines():
+            if line not in seen:
+                seen.add(line)
+                lines.append(line)
+        return {"mode": mode, "output": "\n".join(lines), "line_count": len(lines)}
+
+    if mode == "normalize_whitespace":
+        normalized = re.sub(r"\s+", " ", input_text).strip()
+        return {"mode": mode, "output": normalized}
+
+    return {
+        "mode": mode,
+        "words": len(re.findall(r"\b\w+\b", input_text)),
+        "lines": len(input_text.splitlines()),
+        "characters": len(input_text),
+    }
 
 
 HANDLERS = {
-    "send_email": send_email,
-    "send_webhook": send_webhook,
-    "generate_csv_report": generate_csv_report,
-    "process_csv": process_csv,
-    "simulate_ml_task": simulate_ml_task,
+    "webhook_request": webhook_request,
+    "csv_processing": csv_processing,
+    "text_transform": text_transform,
 }

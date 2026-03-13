@@ -33,11 +33,22 @@ class QueueCreate(QueueBase):
 
 class QueueResponse(QueueBase):
     id: int
+    owner_id: Optional[int] = None
     class Config:
         from_attributes = True
 
+
+class QueueStatsResponse(QueueResponse):
+    total_jobs: int
+    queued_jobs: int
+    running_jobs: int
+    succeeded_jobs: int
+    failed_jobs: int
+    last_activity_at: Optional[datetime] = None
+
 # Job Schemas
 class JobBase(BaseModel):
+    name: str = Field(..., min_length=2, max_length=120)
     queue_name: str
     type: str
     priority: int = 0
@@ -78,8 +89,12 @@ class JobDetailResponse(JobResponse):
     logs: List[JobLogResponse] = []
 
 class AnalyticsOverview(BaseModel):
+    total_queues: int
     total_jobs: int
+    queued_jobs: int
     running_jobs: int
+    succeeded_jobs: int
     failed_jobs: int
+    retrying_jobs: int
     success_rate: float
     avg_processing_time_ms: float

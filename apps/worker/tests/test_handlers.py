@@ -3,45 +3,62 @@ import urllib.request
 
 import pytest
 
-from handlers import generate_csv_report, process_csv, send_webhook
+from handlers import csv_processing, text_transform, webhook_request
 
 
-def test_generate_csv_report_returns_preview_and_stats():
-    payload = {
-        "rows": [
-            {"id": 1, "name": "alice", "score": 12},
-            {"id": 2, "name": "bob", "score": 18},
-        ]
-    }
-    result = asyncio.run(generate_csv_report(payload))
+def test_csv_summary_stats():
+    payload = {"operation": "summary_stats", "csv_text": "name,amount\nA,10\nB,20"}
+    result = asyncio.run(csv_processing(payload))
     assert result["row_count"] == 2
-    assert "id" in result["columns"]
-    assert result["numeric_mean"] is not None
+    assert "amount" in result["columns"]
+    assert result["numeric_summary"]["amount"]["avg"] == 15.0
 
 
-def test_process_csv_returns_structure_metrics():
-    payload = {"csv_content": "name,score\nalice,10\nbob,20"}
-    result = asyncio.run(process_csv(payload))
-    assert result["rows_processed"] == 2
-    assert result["invalid_rows"] == 0
-    assert result["columns"] == ["name", "score"]
+def test_csv_dedupe_rows():
+    payload = {"operation": "dedupe_rows", "csv_text": "name,amount\nA,10\nA,10\nB,20"}
+    result = asyncio.run(csv_processing(payload))
+    assert result["deduplicated_count"] == 2
 
 
-def test_process_csv_requires_header():
-    with pytest.raises(ValueError, match="Missing required field: csv_content"):
-        asyncio.run(process_csv({"csv_content": ""}))
+def test_csv_validate_required_columns_reports_missing_columns():
+    payload = {
+        "operation": "validate_required_columns",
+        "required_columns": ["name", "amount", "email"],
+        "csv_text": "name,amount\nA,10\nB,20",
+    }
+    result = asyncio.run(csv_processing(payload))
+    assert result["valid"] is False
+    assert result["missing_columns"] == ["email"]
 
 
-def test_send_webhook_validates_url():
-    with pytest.raises(ValueError, match="Missing required field: url"):
-        asyncio.run(send_webhook({"body": {"ok": True}}))
+def test_text_transform_dedupe_lines():
+    result = asyncio.run(text_transform({"mode": "dedupe_lines", "input": "a\nb\na"}))
+    assert result["output"] == "a\nb"
 
 
-def test_send_webhook_makes_http_call(monkeypatch):
+def test_text_transform_counts():
+    result = asyncio.run(text_transform({"mode": "counts", "input": "one two\nthree"}))
+    assert result["words"] == 3
+    assert result["lines"] == 2
+
+
+def test_unsupported_transform_mode_fails_cleanly():
+    with pytest.raises(ValueError, match="Unsupported transform mode"):
+        asyncio.run(text_transform({"mode": "deduplicate_lines", "input": "a"}))
+
+
+def test_unsupported_csv_operation_fails_cleanly():
+    with pytest.raises(ValueError, match="Unsupported CSV operation"):
+        asyncio.run(csv_processing({"operation": "summary_statistics", "csv_text": "a,b\n1,2"}))
+
+
+def test_webhook_validates_url():
+    with pytest.raises(ValueError, match="payload.url is required"):
+        asyncio.run(webhook_request({"body": {"ok": True}}))
+
+
+def test_webhook_makes_http_call(monkeypatch):
     class FakeResponse:
-        def __init__(self):
-            self._code = 200
-
         def __enter__(self):
             return self
 
@@ -52,13 +69,21 @@ def test_send_webhook_makes_http_call(monkeypatch):
             return b'{"received":true}'
 
         def getcode(self):
-            return self._code
+            return 200
+
+        @property
+        def headers(self):
+            class H:
+                def items(self):
+                    return {"content-type": "application/json"}.items()
+
+            return H()
 
     def fake_urlopen(req, timeout=5):  # noqa: ARG001
         assert isinstance(req, urllib.request.Request)
         return FakeResponse()
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
-    result = asyncio.run(send_webhook({"url": "https://example.com/hook", "body": {"x": 1}}))
+    result = asyncio.run(webhook_request({"url": "https://example.com/hook", "body": {"x": 1}}))
     assert result["status_code"] == 200
-    assert result["method"] == "POST"
+    assert result["ok"] is True
