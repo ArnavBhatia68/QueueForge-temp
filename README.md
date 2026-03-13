@@ -126,6 +126,7 @@ npm run dev
 ```
 
 Visit `http://localhost:3000/register` to create an account (or seed local sample data for quick exploration).
+Visit `http://localhost:3000` and create a user with `POST /api/v1/auth/register` (or seed local sample data for quick exploration).
 
 ## Deployment (Track A: Vercel + Railway)
 QueueForge is structurally ready for cloud deployments. This architecture splits the Next.js frontend to Vercel and the Python backend services to Railway.
