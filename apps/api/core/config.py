@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "QueueForge"
     
     # Configure via .env
-    FRONTEND_URL: str
+    FRONTEND_URL: str = "http://localhost:3000"
     DATABASE_URL: str
     REDIS_URL: str
     
