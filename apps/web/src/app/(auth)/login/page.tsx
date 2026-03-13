@@ -12,8 +12,8 @@ import { Layers } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('demo@queueforge.io');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { setAuth, setUser } = useAuthStore();
@@ -41,7 +41,7 @@ export default function LoginPage() {
 
       toast.success('Logged in successfully');
       router.push('/dashboard');
-    } catch (error) {
+    } catch {
       toast.error('Invalid email or password');
       setAuth(false);
     } finally {
@@ -97,9 +97,11 @@ export default function LoginPage() {
         </form>
       </Card>
       
-      <p className="px-8 text-center text-sm text-muted-foreground mt-8">
-        Demo credentials: <code className="bg-muted px-1 py-0.5 rounded">demo@queueforge.io / password</code>
-      </p>
+      {process.env.NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS === 'true' && (
+        <p className="px-8 text-center text-sm text-muted-foreground mt-8">
+          Demo credentials are enabled for local development only.
+        </p>
+      )}
     </div>
   );
 }

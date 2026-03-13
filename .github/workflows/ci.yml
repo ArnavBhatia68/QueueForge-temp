@@ -11,41 +11,48 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Python 3.12
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
-        
-    - name: Install dependencies
+
+    - name: Install API and Worker dependencies
       run: |
         python -m pip install --upgrade pip
-        cd apps/api
-        pip install -r requirements.txt
-        
+        pip install -r apps/api/requirements-dev.txt
+        pip install -r apps/worker/requirements-dev.txt
+        pip install flake8
+
     - name: Lint with flake8
       run: |
-        pip install flake8
-        # stop the build if there are Python syntax errors or undefined names
         flake8 apps/api apps/worker --count --select=E9,F63,F7,F82 --show-source --statistics
+
+    - name: Run API tests
+      run: |
+        PYTHONPATH=apps/api pytest -q apps/api/tests
+
+    - name: Run Worker tests
+      run: |
+        PYTHONPATH=apps/worker pytest -q apps/worker/tests
 
   frontend:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Use Node.js 18.x
       uses: actions/setup-node@v4
       with:
         node-version: 18.x
         cache: 'npm'
         cache-dependency-path: apps/web/package-lock.json
-        
+
     - name: Install dependencies
       run: |
         cd apps/web
         npm ci
-        
+
     - name: Build
       run: |
         cd apps/web
