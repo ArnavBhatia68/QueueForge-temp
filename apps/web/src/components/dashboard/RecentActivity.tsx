@@ -10,6 +10,7 @@ import { JobStatus } from '@/types';
 
 interface RecentJobItem {
   id: number;
+  name: string;
   type: string;
   queue_name: string;
   status: JobStatus;
@@ -81,7 +82,7 @@ export function RecentActivity() {
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium leading-none truncate group-hover:text-foreground text-foreground/80">
-                    {job.type}
+                    {job.name}
                     <span className="ml-2 text-xs text-muted-foreground font-normal">
                       #{job.id}
                     </span>
