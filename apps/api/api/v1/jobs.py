@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from typing import List
+from typing import List, Optional
 import json
 import redis.asyncio as aioredis  # type: ignore
 
@@ -13,6 +13,8 @@ from schemas import JobCreate, JobResponse, JobDetailResponse
 from api.deps import get_current_user
 
 router = APIRouter()
+
+ALLOWED_JOB_TYPES = {"webhook_request", "csv_processing", "text_transform"}
 
 
 async def get_redis():
@@ -30,14 +32,33 @@ async def create_job(
     redis=Depends(get_redis),
     current_user: User = Depends(get_current_user),
 ):
-    stmt = select(Queue).where(Queue.name == job_in.queue_name)
-    result = await db.execute(stmt)
-    if not result.scalars().first():
-        queue = Queue(name=job_in.queue_name, description="Auto-created queue")
-        db.add(queue)
-        await db.commit()
+    queue_stmt = select(Queue).where(Queue.name == job_in.queue_name, Queue.owner_id == current_user.id)
+    queue_result = await db.execute(queue_stmt)
+    if not queue_result.scalars().first():
+        raise HTTPException(status_code=404, detail="Queue not found")
+
+    if job_in.type not in ALLOWED_JOB_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported job type: {job_in.type}")
+
+    if job_in.max_retries < 0 or job_in.max_retries > 10:
+        raise HTTPException(status_code=400, detail="max_retries must be between 0 and 10")
+
+    payload_obj = json.loads(job_in.payload) if job_in.payload else {}
+
+    if job_in.type == "webhook_request":
+        if not payload_obj.get("url"):
+            raise HTTPException(status_code=400, detail="Webhook job requires payload.url")
+    elif job_in.type == "csv_processing":
+        if not payload_obj.get("csv_text"):
+            raise HTTPException(status_code=400, detail="CSV job requires payload.csv_text")
+        if payload_obj.get("operation") not in {"csv_to_json", "deduplicate_rows", "validate_required_columns", "summary_statistics"}:
+            raise HTTPException(status_code=400, detail="CSV job has unsupported operation")
+    elif job_in.type == "text_transform":
+        if not payload_obj.get("input"):
+            raise HTTPException(status_code=400, detail="Text job requires payload.input")
 
     job = Job(
+        name=job_in.name,
         owner_id=current_user.id,
         queue_name=job_in.queue_name,
         type=job_in.type,
@@ -50,11 +71,10 @@ async def create_job(
     await db.commit()
     await db.refresh(job)
 
-    db.add(JobLog(job_id=job.id, message="Job created and queued", level="INFO"))
+    db.add(JobLog(job_id=job.id, message="Job queued", level="INFO"))
     await db.commit()
 
-    job_data_str = json.dumps({"job_id": job.id})
-    await redis.rpush(f"queue:{job.queue_name}", job_data_str)
+    await redis.rpush(f"queue:{job.queue_name}", json.dumps({"job_id": job.id}))
 
     return job
 
@@ -64,8 +84,10 @@ async def list_jobs(
     db: AsyncSession = Depends(get_db),
     skip: int = 0,
     limit: int = 100,
-    status: JobStatus = None,  # type: ignore
-    queue_name: str = None,  # type: ignore
+    status: Optional[JobStatus] = None,
+    queue_name: Optional[str] = None,
+    job_type: Optional[str] = None,
+    search: Optional[str] = Query(default=None, min_length=1),
     current_user: User = Depends(get_current_user),
 ):
     stmt = select(Job).where(Job.owner_id == current_user.id).order_by(Job.created_at.desc())
@@ -73,6 +95,11 @@ async def list_jobs(
         stmt = stmt.where(Job.status == status)
     if queue_name:
         stmt = stmt.where(Job.queue_name == queue_name)
+    if job_type:
+        stmt = stmt.where(Job.type == job_type)
+    if search:
+        like_term = f"%{search}%"
+        stmt = stmt.where((Job.name.ilike(like_term)) | (Job.queue_name.ilike(like_term)) | (Job.type.ilike(like_term)))
 
     stmt = stmt.offset(skip).limit(limit)
     result = await db.execute(stmt)
@@ -116,15 +143,15 @@ async def retry_job(
         raise HTTPException(status_code=400, detail="Can only retry failed or cancelled jobs")
 
     job.status = JobStatus.QUEUED
-    job.attempts = 0
     job.error_message = None
+    job.started_at = None
+    job.completed_at = None
 
-    db.add(JobLog(job_id=job.id, message="Job retry initiated", level="INFO"))
+    db.add(JobLog(job_id=job.id, message="Job retry requested by user", level="INFO"))
     await db.commit()
     await db.refresh(job)
 
-    job_data_str = json.dumps({"job_id": job.id})
-    await redis.rpush(f"queue:{job.queue_name}", job_data_str)
+    await redis.rpush(f"queue:{job.queue_name}", json.dumps({"job_id": job.id}))
 
     return job
 
@@ -141,11 +168,10 @@ async def cancel_job(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    if job.status in (JobStatus.SUCCEEDED, JobStatus.FAILED):
-        raise HTTPException(status_code=400, detail="Cannot cancel a completed job")
+    if job.status not in (JobStatus.QUEUED, JobStatus.RUNNING, JobStatus.RETRYING):
+        raise HTTPException(status_code=400, detail="Can only cancel queued or running jobs")
 
     job.status = JobStatus.CANCELLED
-
     db.add(JobLog(job_id=job.id, message="Job cancelled by user", level="WARNING"))
     await db.commit()
     await db.refresh(job)

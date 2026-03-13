@@ -18,6 +18,7 @@ class JobStatus(str, enum.Enum):
 class Job(Base):
     __tablename__ = "jobs"
     id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, default="Untitled job")
     queue_name = Column(String, nullable=False, index=True)
     type = Column(String, nullable=False, index=True)
     priority = Column(Integer, default=0, index=True)

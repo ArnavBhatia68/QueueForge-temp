@@ -104,11 +104,7 @@ export default function LoginPage() {
         </form>
       </Card>
       
-      {process.env.NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS === 'true' && (
-        <p className="px-8 text-center text-sm text-muted-foreground mt-8">
-          Demo credentials are enabled for local development only.
-        </p>
-      )}
+
     </div>
   );
 }
