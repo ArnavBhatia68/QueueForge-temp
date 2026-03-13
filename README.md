@@ -146,6 +146,8 @@ Import the repository into Vercel.
 
 ## API Summary
 JWT-authenticated REST API:
+- `GET /health` — Liveness probe for API process
+- `GET /health/deep` — Readiness probe that verifies PostgreSQL + Redis connectivity
 - `POST /api/v1/auth/login` — Obtain access token
 - `GET /api/v1/jobs` — List jobs (optional `?status=` / `?queue_name=` filters)
 - `POST /api/v1/jobs` — Enqueue a new job
