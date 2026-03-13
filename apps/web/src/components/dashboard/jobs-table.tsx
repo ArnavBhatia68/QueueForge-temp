@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { RefreshCcw, XCircle, Search, Info } from 'lucide-react';
+import { RefreshCcw, XCircle, Search, Info, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function JobsTable() {
@@ -64,6 +64,24 @@ export function JobsTable() {
     },
     onError: () => toast.error('Failed to cancel job'),
   });
+  
+  const createSampleJobMutation = useMutation({
+    mutationFn: async () => {
+      const types = ['process_video', 'send_email', 'generate_report', 'resize_image'];
+      const randomType = types[Math.floor(Math.random() * types.length)];
+      return api.post('/jobs/', {
+        queue_name: 'default',
+        type: randomType,
+        payload: JSON.stringify({ source: 'dashboard_sample', timestamp: new Date().toISOString() }),
+        priority: Math.floor(Math.random() * 10),
+      });
+    },
+    onSuccess: () => {
+      toast.success('Sample job created');
+      queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    },
+    onError: () => toast.error('Failed to create sample job'),
+  });
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -102,6 +120,14 @@ export function JobsTable() {
             <option value="failed">Failed</option>
             <option value="cancelled">Cancelled</option>
           </select>
+          <Button 
+            onClick={() => createSampleJobMutation.mutate()} 
+            disabled={createSampleJobMutation.isPending}
+            className="whitespace-nowrap"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            {createSampleJobMutation.isPending ? 'Creating...' : 'Create Sample Job'}
+          </Button>
         </div>
       </div>
 
