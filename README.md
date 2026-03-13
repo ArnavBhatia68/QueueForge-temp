@@ -2,7 +2,7 @@
 
 QueueForge is a production-grade, distributed background job processing platform with a polished, real-time administrative dashboard.
 
-Built as a comprehensive portfolio project, QueueForge demonstrates a modern approach to asynchronous architectural patterns. It features an API-driven control plane, robust Python workers, Redis message passing, and a sleek Next.js (App Router) interface. 
+QueueForge demonstrates a modern approach to asynchronous architectural patterns. It features an API-driven control plane, robust Python workers, Redis message passing, and a sleek Next.js (App Router) interface. 
 
 ![QueueForge Architecture](./docs/architecture.png)
 
@@ -75,7 +75,7 @@ pip install -r requirements.txt
 # Run migrations to build the tables
 PYTHONPATH=. alembic upgrade head
 
-# Seed demo queues, jobs, and a test user
+# Seed sample data for local development (optional)
 PYTHONPATH=. python scripts/seed.py
 
 # Start the API server on :8001
@@ -102,9 +102,7 @@ npm install
 npm run dev
 ```
 
-Visit `http://localhost:3000` and sign in with:
-**Email:** `demo@queueforge.io`
-**Password:** `password`
+Visit `http://localhost:3000` and create a user with `POST /api/v1/auth/register` (or seed local sample data for quick exploration).
 
 ## Deployment (Track A: Vercel + Railway)
 QueueForge is structurally ready for cloud deployments. This architecture splits the Next.js frontend to Vercel and the Python backend services to Railway.
@@ -173,3 +171,13 @@ cd apps/api && PYTHONPATH=. alembic revision --autogenerate -m "your_change_desc
 - CRON schedule triggers for recurring jobs.
 - WebSocket streaming for dashboard updates (currently uses smart polling).
 - Complex DAG (Directed Acyclic Graph) workflow dependencies.
+
+
+## Production Readiness Checklist
+- Configure unique strong secrets and service credentials (`JWT_SECRET`, Postgres, Redis).
+- Set `FRONTEND_URL` and `NEXT_PUBLIC_API_URL` to deployed domains.
+- Run migrations in the deployed environment before first boot.
+- Disable demo-only login hints (`NEXT_PUBLIC_SHOW_DEMO_CREDENTIALS` should be unset).
+- Replace sample worker handlers with your business-specific handlers.
+- Add automated integration tests for your critical job types and API flows.
+- Frontend now uses system fonts to keep builds deterministic in restricted CI/network environments.
