@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 export const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: process.env.NEXT_PUBLIC_API_URL || '/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -18,7 +18,7 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Logout on 401 — but only when not on the login page (prevents redirect loops)
+// Logout on 401 — but only when not on the login page
 api.interceptors.response.use(
   (response) => response,
   (error) => {
